@@ -151,6 +151,51 @@ class ParsedDockerComposeFileValidationTest {
     }
 
     @Test
+    void shouldObtainImageNamesFromOverrideTag() throws Exception {
+        File file = temporaryFolder.resolve("override-docker-compose.yml").toFile();
+        try (PrintWriter writer = new PrintWriter(file)) {
+            writer.println("services:");
+            writer.println("  db: !override");
+            writer.println("    image: postgres:16");
+            writer.println("  redis:");
+            writer.println("    image: !override redis:7");
+        }
+        ParsedDockerComposeFile parsedFile = new ParsedDockerComposeFile(file);
+        assertThat(parsedFile.getServiceNameToImageNames())
+            .as("values tagged with !override are kept")
+            .containsOnly(entry("db", Sets.newHashSet("postgres:16")), entry("redis", Sets.newHashSet("redis:7")));
+    }
+
+    @Test
+    void shouldIgnoreImageNamesRemovedWithResetTag() throws Exception {
+        File file = temporaryFolder.resolve("reset-docker-compose.yml").toFile();
+        try (PrintWriter writer = new PrintWriter(file)) {
+            writer.println("services:");
+            writer.println("  db:");
+            writer.println("    image: !reset null");
+            writer.println("  redis:");
+            writer.println("    image: redis:7");
+        }
+        ParsedDockerComposeFile parsedFile = new ParsedDockerComposeFile(file);
+        assertThat(parsedFile.getServiceNameToImageNames())
+            .as("values tagged with !reset are removed")
+            .containsOnly(entry("redis", Sets.newHashSet("redis:7")));
+    }
+
+    @Test
+    void shouldContinueAfterServiceWithUnknownStructure() {
+        ParsedDockerComposeFile parsedFile = new ParsedDockerComposeFile(
+            ImmutableMap.of(
+                "services",
+                ImmutableMap.of("unknown", "not a map", "redis", ImmutableMap.of("image", "redis:7"))
+            )
+        );
+        assertThat(parsedFile.getServiceNameToImageNames())
+            .as("services after one with an unknown structure are still parsed")
+            .containsOnly(entry("redis", Sets.newHashSet("redis:7")));
+    }
+
+    @Test
     void shouldSupportALotOfAliases() throws Exception {
         File file = temporaryFolder.resolve("tmp-docker-compose.yml").toFile();
         try (PrintWriter writer = new PrintWriter(file)) {
